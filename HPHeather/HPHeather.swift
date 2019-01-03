@@ -69,9 +69,6 @@ extension HPHeather:WKUIDelegate,WKNavigationDelegate{
     
     // 页面加载完成之后调用
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard let url = self.url else { return  }
-        showBackIcon(url: url.absoluteString)
-        showShareIcon(url: url.absoluteString)
         self.webView.evaluateJavaScript("registerEnv('ios')", completionHandler: { (_, _) in
         })
     }
@@ -114,9 +111,9 @@ extension HPHeather {
             guard let oldUrl = self.url else { return  }
             if url.absoluteString != oldUrl.absoluteString{
                 self.url = url;
-                self.showBackIcon(url: url.absoluteString)
-                self.showShareIcon(url: url.absoluteString)
             }
+            self.showBackIcon(url: url.absoluteString)
+            self.showShareIcon(url: url.absoluteString)
         })
         let notificationName = Notification.Name(rawValue: "SendAuthRespCode")
         _ = NotificationCenter.default.rx
@@ -174,6 +171,8 @@ extension HPHeather {
     func showShareIcon(url:String)  {
         if url.contains("share") {
             shareBtn.isHidden = false
+        }else{
+            shareBtn.isHidden = true
         }
     }
     func showBackIcon(url:String)  {
@@ -216,8 +215,7 @@ extension HPHeather{
         guard let share_title = json["share_title"]?.string else { return }
         let shareParames = NSMutableDictionary()
         shareParames.ssdkSetupShareParams(byText:json["share_desc"]?.stringValue , images: [json["share_logo"]?.stringValue], url:json["share_link"]?.url , title: share_title, type: .webPage)
-        ShareSDK.showShareActionSheet(nil, items: nil, shareParams: shareParames) { (_, _, _, _, _, _) in
-            
+        ShareSDK.share(.subTypeWechatSession, parameters: shareParames) { (_, _, _, _) in
         }
     }
     func wechatLogin() {
