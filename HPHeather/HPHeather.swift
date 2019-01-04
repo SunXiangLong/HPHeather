@@ -18,6 +18,7 @@ let categoryUrl = "https://www.mabao75.com/category?e=xmb"
 let homeUrl = "https://www.mabao75.com/home?e=xmb"
 class HPHeather: UIViewController {
     var url  = URL(string: indexUrl)
+    var paySuccessUrl:URL?
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(true)
         addScriptMessageHandler()
@@ -115,12 +116,15 @@ extension HPHeather {
             self.showBackIcon(url: url.absoluteString)
             self.showShareIcon(url: url.absoluteString)
         })
-        let notificationName = Notification.Name(rawValue: "SendAuthRespCode")
+        let authRespNotificationName = Notification.Name(rawValue: "SendAuthRespCode")
+        let wxPayRespNotificationName = Notification.Name(rawValue: "WXPaySuccess")
+        let zfbPayRespNotificationName = Notification.Name(rawValue: "AlipayPay")
+        
         _ = NotificationCenter.default.rx
-            .notification(notificationName)
-            .takeUntil(self.rx.deallocated) //页面销毁自动移除通知监听
-            .subscribe(onNext: { notification in
-                //获取通知数据
+            .notification(authRespNotificationName)
+            .takeUntil(self.rx.deallocated)
+            .subscribe(onNext: {[weak self] notification in
+                guard let self = self else { return  }
                 let userInfo = notification.userInfo as! [String: AnyObject]
                 guard let code = userInfo["code"] as? String else { return  }
                 guard let url = URL(string: "https://www.mabao75.com/auth/wechat?code=\(code)&platform=app") else { return  }
@@ -129,19 +133,37 @@ extension HPHeather {
                     self.webView.load(URLRequest(url: url))
                 }
             })
-        let _ =  webView.rx.observe(String.self, "title").subscribe(onNext: {[weak self] (value) in
+        _ = NotificationCenter.default.rx
+            .notification(wxPayRespNotificationName)
+            .takeUntil(self.rx.deallocated)
+            .subscribe(onNext: {[weak self] notification in
+                guard let self = self else { return  }
+                guard let paySuccessUrl = self.paySuccessUrl else { return  }
+                self.webView.load(URLRequest(url: paySuccessUrl))
+            })
+        _ = NotificationCenter.default.rx
+            .notification(zfbPayRespNotificationName)
+            .takeUntil(self.rx.deallocated)
+            .subscribe(onNext: {[weak self] notification in
+                guard let self = self else { return  }
+                let userInfo = notification.userInfo as! [String: AnyObject]
+                print(userInfo)
+                
+                guard let paySuccessUrl = self.paySuccessUrl else { return  }
+                self.webView.load(URLRequest(url: paySuccessUrl))
+            })
+        _ =  webView.rx.observe(String.self, "title").subscribe(onNext: {[weak self] (value) in
             guard let self = self else { return  }
             guard let title = value else { return  }
             self.title = title
         })
-        let _ =  webView.rx.observe(NSNumber.self, "estimatedProgress").subscribe(onNext: {[weak self] (value) in
+        _ =  webView.rx.observe(NSNumber.self, "estimatedProgress").subscribe(onNext: {[weak self] (value) in
             guard let self = self else { return  }
             guard let estimatedProgress = value else { return  }
             if self.progressView.progress == 1 && estimatedProgress.floatValue != 1{
                 self.progressView.isHidden = false;
             }
             self.progressView.progress = estimatedProgress.floatValue
-            print(estimatedProgress.floatValue)
             if estimatedProgress.floatValue == 1 {
                 print(self.progressView)
                 UIView.animate(withDuration: 0.25, delay: 0.3, options: .curveEaseIn, animations: {
@@ -152,12 +174,12 @@ extension HPHeather {
             }
         })
         
-        let _ = backBtn.rx.tap.subscribe {[weak self] (_) in
+        _ = backBtn.rx.tap.subscribe {[weak self] (_) in
             guard let self = self else { return  }
             self.goBack()
             
         }
-        let _ =  shareBtn.rx.tap.subscribe {[weak self] (_) in
+        _ =  shareBtn.rx.tap.subscribe {[weak self] (_) in
             guard let self = self else { return  }
             self.webView.evaluateJavaScript("registerAppShareInfo()", completionHandler: { (_,_) in
             })
@@ -182,7 +204,7 @@ extension HPHeather {
             backBtn.isHidden = false
         }
     }
-   
+    
 }
 //MARK: - pay
 extension HPHeather{
@@ -200,11 +222,18 @@ extension HPHeather{
         if let package = config["package"]?.string{
             pay.package = package
         }
+        if let paySuccessUrl = json["return_url"]?.string{
+            self.paySuccessUrl = URL(string: paySuccessUrl)
+        }
         WXApi.send(pay)
     }
     func zfpPay(_ json:[String:JSON])  {
         guard let orderString = json["config"]?.string else { return }
-        AlipaySDK.defaultService()?.payOrder(orderString, fromScheme: "HPHeather", callback: { (value) in
+        if let paySuccessUrl = json["return_url"]?.string{
+            self.paySuccessUrl = URL(string: paySuccessUrl)
+        }
+        AlipaySDK.defaultService()?.payOrder(orderString, fromScheme: "HPHeatherAPP", callback: { (value) in
+            print(value)
             
         })
     }
@@ -270,7 +299,6 @@ extension HPHeather{
             wechatLogin()
         case "case":
             getMedicList(json)
-            
         default:
             print("--")
         }

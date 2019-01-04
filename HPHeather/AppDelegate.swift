@@ -25,13 +25,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         HHMSDK.default.start(option: option)
         return true
     }
-    func application(_ application: UIApplication, handleOpen url: URL) -> Bool {
-        return WXApi.handleOpen(url, delegate: self )
-    }
-    func application(_ application: UIApplication, open url: URL, sourceApplication: String?, annotation: Any) -> Bool {
-        return WXApi.handleOpen(url, delegate: self)
-    }
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+        AlipaySDK.defaultService()?.processOrder(withPaymentResult: url, standbyCallback: { (value) in
+            NotificationCenter.default.post(Notification.init(name: Notification.Name(rawValue: "AlipayPay"), object: nil, userInfo: value))
+        })
         return WXApi.handleOpen(url, delegate: self)
     }
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -61,15 +58,44 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     
 }
-
+//MARK: - WXApiDelegate
 extension AppDelegate:WXApiDelegate{
     func onReq(_ req: BaseReq!) {
         print(req)
     }
     func onResp(_ resp: BaseResp!) {
-        let authResp =  resp as!  SendAuthResp
-        guard let code = authResp.code else { return  }
-        NotificationCenter.default.post(name: NSNotification.Name(rawValue: "SendAuthRespCode"), object: nil, userInfo: ["code":code])
-        print(resp)
+        switch resp.className {
+        case SendAuthResp.description():
+            let authResp =  resp as!  SendAuthResp
+            guard let code = authResp.code else { return  }
+            NotificationCenter.default.post(name: NSNotification.Name(rawValue: "SendAuthRespCode"), object: nil, userInfo: ["code":code])
+        case PayResp.description():
+            let payResp = resp as!  PayResp
+            switch payResp.errCode {
+            case Int32(0):
+                NotificationCenter.default.post(name: NSNotification.Name(rawValue: "WXPaySuccess"), object: nil, userInfo: nil)
+            default:
+                print("error")
+            }
+        default:
+            print("---")
+        }
     }
 }
+extension NSObject
+{
+    // MARK:返回className
+    var className:String{
+        get{
+            let name =  type(of: self).description()
+            if(name.contains(".")){
+                return name.components(separatedBy: ".")[1];
+            }else{
+                return name;
+            }
+            
+        }
+    }
+    
+}
+
